@@ -1,5 +1,5 @@
 /**
- * sigrun-bifrost — the big port (provider plugins Task 10):
+ * @sigrun/provider-bifrost — the big port (provider plugins Task 10):
  * [Bifrost](https://github.com/maximhq/bifrost) LLM gateway as one dynamic
  * provider, ported from pi-bifrost-gateway 0.3.0 @ 5d15a28. All failover,
  * key selection, and routing happens in Bifrost — this plugin never routes
@@ -11,7 +11,7 @@
  * pathway). The port's two deliberate adaptations:
  *
  * - CONFIG: pi's config file becomes the plugin's SCOPED SETTINGS
- *   (`settings/sigrun-bifrost.json`), read ONCE at factory time —
+ *   (`settings/provider-bifrost.json`), read ONCE at factory time —
  *   restart-required (sigrun's loader pre-keys the factory host on the
  *   provisional slug so the factory-time read resolves this package's
  *   file). No /login flow; no pi config file.
@@ -139,7 +139,7 @@ export declare function createBifrostPlugin(options: BifrostPluginOptions): Bifr
  * Settings are read ONCE here and BAKED into the provider (the
  * restart-required semantics: the loader pre-keys the host on the
  * provisional slug — this package's manifest name — so the factory-time
- * read resolves `settings/sigrun-bifrost.json`). Parse issues log via
+ * read resolves `settings/provider-bifrost.json`). Parse issues log via
  * `console.warn` and never quarantine (a wrong-typed key falls back to
  * its default, exactly like the pi port's issue list).
  */

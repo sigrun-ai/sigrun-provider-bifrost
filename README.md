@@ -1,4 +1,4 @@
-# sigrun-bifrost
+# @sigrun/provider-bifrost
 
 A [sigrun](https://github.com/sigrun-ai) provider plugin: a
 [Bifrost](https://github.com/maximhq/bifrost) LLM gateway as one dynamic
@@ -10,7 +10,7 @@ Bifrost — this plugin never routes anything itself.
 ## What it contributes
 
 A **provider-only contributor** — the default export is a factory
-returning `{ name: "sigrun-bifrost", providers: [{ provider, readiness }],
+returning `{ name: "provider-bifrost", providers: [{ provider, readiness }],
 health }` with no pi-durable extension surface. Sigrun's loader merges
 the provider into its `Models` store at boot.
 
@@ -41,14 +41,14 @@ the provider into its `Models` store at boot.
 ## Settings
 
 Read **once at factory time** from the plugin's scoped settings —
-`settings/sigrun-bifrost.json` in the sigrun config dir — and **baked
+`settings/provider-bifrost.json` in the sigrun config dir — and **baked
 into the provider**; applying a change requires a restart (sigrun's
 loader pre-keys the factory host on the provisional slug, so the
 factory-time read resolves this file). Absent file = defaults.
 Wrong-typed values and unknown keys warn and fall back — never fatal.
 
 ```jsonc
-// settings/sigrun-bifrost.json
+// settings/provider-bifrost.json
 {
 	"baseUrl": "https://your-bifrost.example/v1", // settings wins, then BIFROST_BASE_URL
 	"publishChains": false,   // chains mode when true (needs management plane)

@@ -20,7 +20,9 @@ function packageVersion(): string {
 	return "0.0.0";
 }
 
-const USER_AGENT = `sigrun-bifrost/${packageVersion()}`;
+// The wire identity: the repo/product name (the npm name minus its
+// scope), stable across a package rename — upstreams key logs on it.
+const USER_AGENT = `sigrun-provider-bifrost/${packageVersion()}`;
 
 export class HttpError extends Error {
 	constructor(

@@ -8,10 +8,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ## [0.1.0] - 2026-10-18
+### Changed
+- Renamed to `@sigrun/provider-bifrost` for the 0.1.0 release (GitHub
+  repo `sigrun-ai/sigrun-provider-bifrost`): published package metadata
+  (`publishConfig` access/provenance), host modules
+  (`@earendil-works/pi-ai`, `@earendil-works/pi-durable`, `typebox`)
+  moved to `peerDependencies` mirrored in `devDependencies` at exact
+  pins, CHANGELOG.md joined the files whitelist, and a manifest hygiene
+  check wired into `npm test`. The contributor identity follows the
+  package slug: the factory result's `name` becomes `provider-bifrost`
+  and the scoped settings file `settings/provider-bifrost.json` (the
+  loader pre-keys the two-phase host from the package name; a stale
+  declared name would split the factory-time settings scope).
 ### Added
 - Sigrun provider plugin for a Bifrost LLM gateway, ported from
   pi-bifrost-gateway 0.3.0 (`5d15a28`): provider-only contributor
-  (`{ name: "sigrun-bifrost", providers: [{ provider, readiness }],
+  (`{ name: "provider-bifrost", providers: [{ provider, readiness }],
   health }`), `provider: "bifrost"` stamped on every published model so
   persisted catalogs survive cold-boot restore.
 - Two discovery modes: member-only (default, `publishChains: false` —
@@ -20,7 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   via `/api/governance/virtual-keys` + chain rules via
   `/api/routing/rules`, chains published as `bifrost/<chain>` with
   min-member context windows and cost 0).
-- Scoped-settings configuration (`settings/sigrun-bifrost.json`), read
+- Scoped-settings configuration (`settings/provider-bifrost.json`), read
   once at factory time (restart-required): `baseUrl`, `publishChains`
   (default false), `publishUpstream` (default true),
   `managementApiKey`, `thinkingOverrides`, `nativeProtocols`
