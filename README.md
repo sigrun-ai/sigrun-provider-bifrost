@@ -126,16 +126,17 @@ and `not_configured` readiness.
 ```jsonc
 // settings.json (sigrun config dir) — the UNIFIED extensions list:
 // install + load in one place; npm and git specifiers are the same list
-// ("sigrun-bifrost@range", "git:github.com/sigrun-ai/sigrun-bifrost", an
-// https git URL with an optional @ref, or this file: form).
+// npm ("@sigrun/provider-bifrost@^0.1.0"), git
+// ("git:github.com/sigrun-ai/sigrun-provider-bifrost", or any
+// https git URL with an optional @ref), or the file: form below.
 {
 	"extensions": ["file:/path/to/sigrun-bifrost"]
 }
 ```
 
 The committed `dist/` is the load target for git installs; pi-ai and
-pi-durable are devDependencies (build-time) — sigrun ships them at
-runtime.
+pi-durable are peerDependencies (sigrun supplies them at runtime);
+they are mirrored in devDependencies for this repo's own build and tests.
 
 ## Development
 
