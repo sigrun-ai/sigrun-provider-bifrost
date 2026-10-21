@@ -203,7 +203,7 @@ describe("the factory contract", () => {
 			stores: { settings: { get: async () => ({}), set: async () => {} } },
 		};
 		const result = await sigrunBifrost(host);
-		expect(result.name).toBe("sigrun-bifrost");
+		expect(result.name).toBe("provider-bifrost");
 		// Provider-only: no extension field (the loader's Task 1 pathway).
 		expect("extension" in result).toBe(false);
 		expect(result.providers).toHaveLength(1);
@@ -667,7 +667,7 @@ describe("factory-time settings baking", () => {
 		// Mirrors sigrun-pareto's Task 9 P1 regression test: the loader
 		// pre-keys the factory host on the slug derived from the LOAD
 		// SPECIFIER (this package's manifest name), so the factory-time
-		// settings read resolves settings/sigrun-bifrost.json. The store
+		// settings read resolves settings/provider-bifrost.json. The store
 		// here is FILE-BACKED exactly like sigrun's scopedExtensionStores
 		// (absent file → {}).
 		const pkg = JSON.parse(
@@ -680,7 +680,7 @@ describe("factory-time settings baking", () => {
 			.toLowerCase()
 			.replace(/[^a-z0-9_-]+/g, "-")
 			.replace(/^[-_]+|[-_]+$/g, "");
-		expect(slug).toBe("sigrun-bifrost");
+		expect(slug).toBe("provider-bifrost");
 
 		const dir = await mkdtemp(join(tmpdir(), "sigrun-bifrost-host-"));
 		try {

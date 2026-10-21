@@ -1,5 +1,5 @@
 /**
- * sigrun-bifrost — the big port (provider plugins Task 10):
+ * @sigrun/provider-bifrost — the big port (provider plugins Task 10):
  * [Bifrost](https://github.com/maximhq/bifrost) LLM gateway as one dynamic
  * provider, ported from pi-bifrost-gateway 0.3.0 @ 5d15a28. All failover,
  * key selection, and routing happens in Bifrost — this plugin never routes
@@ -11,7 +11,7 @@
  * pathway). The port's two deliberate adaptations:
  *
  * - CONFIG: pi's config file becomes the plugin's SCOPED SETTINGS
- *   (`settings/sigrun-bifrost.json`), read ONCE at factory time —
+ *   (`settings/provider-bifrost.json`), read ONCE at factory time —
  *   restart-required (sigrun's loader pre-keys the factory host on the
  *   provisional slug so the factory-time read resolves this package's
  *   file). No /login flow; no pi config file.
@@ -74,7 +74,7 @@ export const BIFROST_API_KEY_ENV = "BIFROST_API_KEY";
  */
 export async function discoverModels(token, baseUrl, options, signal) {
     if (!token || !baseUrl) {
-        throw new Error("sigrun-bifrost: the gateway is not configured " +
+        throw new Error("provider-bifrost: the gateway is not configured " +
             `(need a virtual key (auth.json or ${BIFROST_API_KEY_ENV}) and a base URL ` +
             `(settings baseUrl or ${BIFROST_BASE_URL_ENV})); refusing to publish an empty catalog`);
     }
@@ -82,27 +82,27 @@ export async function discoverModels(token, baseUrl, options, signal) {
         const managementToken = options.managementApiKey ?? token;
         const scopeId = await wireScopeId(managementToken, token, baseUrl, signal);
         if (!scopeId) {
-            throw new Error("sigrun-bifrost: credential does not match any virtual key in /api/governance/virtual-keys");
+            throw new Error("provider-bifrost: credential does not match any virtual key in /api/governance/virtual-keys");
         }
         const { catalog, rules } = await wireDiscovery(managementToken, token, baseUrl, scopeId, signal);
         const chains = wireRulesToChains(rules);
         if (chains.length === 0) {
-            throw new Error(`sigrun-bifrost: no chain routing rules found for ${scopeId} — is chains-first routing configured for this VK?`);
+            throw new Error(`provider-bifrost: no chain routing rules found for ${scopeId} — is chains-first routing configured for this VK?`);
         }
         const models = buildAllModels(chains, catalog, PROVIDER_ID, baseUrl, true, options.publishUpstream, options.thinkingOverrides, options.nativeProtocols);
         if (models.length === 0) {
-            throw new Error("sigrun-bifrost: chains discovery produced no models; refusing to publish an empty catalog");
+            throw new Error("provider-bifrost: chains discovery produced no models; refusing to publish an empty catalog");
         }
         return models;
     }
     // Member-only mode: inference plane only, ZERO management calls.
     if (!options.publishUpstream) {
-        throw new Error("sigrun-bifrost: publishChains and publishUpstream are both false — nothing to publish");
+        throw new Error("provider-bifrost: publishChains and publishUpstream are both false — nothing to publish");
     }
     const catalog = await wireCatalog(token, baseUrl, signal);
     const models = buildAllModels([], catalog, PROVIDER_ID, baseUrl, false, true, options.thinkingOverrides, options.nativeProtocols);
     if (models.length === 0) {
-        throw new Error("sigrun-bifrost: /v1/models returned no usable entries; refusing to publish an empty catalog");
+        throw new Error("provider-bifrost: /v1/models returned no usable entries; refusing to publish an empty catalog");
     }
     return models;
 }
@@ -134,7 +134,7 @@ export function createBifrostPlugin(options) {
         const next = status();
         if (next === lastAnnounced)
             return;
-        console.warn(`sigrun-bifrost: bifrost ${lastAnnounced ?? "startup"} → ${next}` +
+        console.warn(`provider-bifrost: bifrost ${lastAnnounced ?? "startup"} → ${next}` +
             (lastRefreshDetail !== undefined && next === "degraded"
                 ? ` (${lastRefreshDetail})`
                 : ""));
@@ -253,7 +253,7 @@ export function createBifrostPlugin(options) {
  * Settings are read ONCE here and BAKED into the provider (the
  * restart-required semantics: the loader pre-keys the host on the
  * provisional slug — this package's manifest name — so the factory-time
- * read resolves `settings/sigrun-bifrost.json`). Parse issues log via
+ * read resolves `settings/provider-bifrost.json`). Parse issues log via
  * `console.warn` and never quarantine (a wrong-typed key falls back to
  * its default, exactly like the pi port's issue list).
  */
@@ -262,7 +262,7 @@ export default async function sigrunBifrost(host) {
     const issues = [];
     const settings = parseBifrostSettings(raw, issues);
     for (const issue of issues) {
-        console.warn(`sigrun-bifrost: settings/sigrun-bifrost.json: ${issue}`);
+        console.warn(`provider-bifrost: settings/provider-bifrost.json: ${issue}`);
     }
     const plugin = createBifrostPlugin({
         publishChains: settings.publishChains,
@@ -273,7 +273,7 @@ export default async function sigrunBifrost(host) {
         thinkingOverrides: settings.thinkingOverrides,
     });
     return {
-        name: "sigrun-bifrost",
+        name: "provider-bifrost",
         providers: [{ provider: plugin.provider, readiness: plugin.readiness }],
         health: plugin.health,
     };

@@ -41,7 +41,7 @@ describe("fetchJson", () => {
 		const fetchMock = vi.fn(async () => respond(200, JSON.stringify({ ok: true })));
 		await fetchJson("https://x.test/", "k", Validator, undefined, { fetchImpl: fetchMock as typeof fetch });
 		const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
-		expect((init.headers as Record<string, string>)["User-Agent"]).toMatch(/^sigrun-bifrost\//);
+		expect((init.headers as Record<string, string>)["User-Agent"]).toMatch(/^sigrun-provider-bifrost\//);
 	});
 
 	it("throws HttpError with parsed code/message on error JSON", async () => {

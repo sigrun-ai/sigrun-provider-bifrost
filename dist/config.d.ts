@@ -1,7 +1,7 @@
 /**
  * Plugin configuration (ported from pi-bifrost-gateway 0.3.0 @ 5d15a28,
  * `src/config.ts`): the SAME key surface, but sourced from the plugin's
- * SCOPED SETTINGS (`settings/sigrun-bifrost.json` in the sigrun config
+ * SCOPED SETTINGS (`settings/provider-bifrost.json` in the sigrun config
  * dir, read ONCE at factory time — restart-required) instead of pi's
  * config file. Parsing is pure — `parseBifrostSettings(raw, issues)`
  * takes the settings object the store returns; wrong-typed values and
