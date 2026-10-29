@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   provenance. No functional change from 0.1.0.
 
 ## [Unreleased]
+### Changed
+- Forward-compatible with pi-durable 1.4.0 (widened peer range). No behaviour change.
 
 ## [0.1.0] - 2026-10-18
 ### Changed
