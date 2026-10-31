@@ -11,8 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   provenance. No functional change from 0.1.0.
 
 ## [Unreleased]
+
+## [0.2.0] - 2026-10-30
 ### Changed
-- Forward-compatible with pi-durable 1.4.0 (widened peer range). No behaviour change.
+- **Breaking:** chain model references change from `bifrost/bifrost/<chain>`
+  to `bifrost/chain/<chain>` (plugin id `chain/<chain>`). The gateway
+  receives the bare chain name.
+- Member ids are unchanged; upstream catalog entries in the reserved
+  `chain/` display namespace are skipped with one warning per process.
+- Forward-compatible with pi-durable 1.4.0 (widened peer range).
 
 ## [0.1.0] - 2026-10-18
 ### Changed

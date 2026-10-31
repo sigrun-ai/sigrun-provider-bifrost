@@ -26,11 +26,14 @@ the provider into its `Models` store at boot.
     queried too: the VK self-identifies against
     `/api/governance/virtual-keys` (the credential value matched to VK
     rows), then `/api/routing/rules?scope=virtual_key&scope_id=<vk>`
-    yields the chain rules; every usable chain publishes as
-    `bifrost/<chain>` (min-member context window, cost 0 by design —
-    the gateway's own `/api/logs` is the billing system of record),
+    yields the chain rules; every usable chain publishes with plugin id
+    `chain/<name>` (displayed by sigrun as `bifrost/chain/<name>`, with
+    min-member context window and cost 0 by design). Requests to the
+    gateway carry the bare `<name>`, never the `chain/` display prefix.
+    The gateway's own `/api/logs` is the billing system of record,
     optionally followed by the upstream catalog (`publishUpstream`,
-    default true).
+    default true). Upstream `/v1/models` entries under the reserved
+    `chain/` namespace are skipped as direct members.
 - **Readiness** (`not_configured` / `degraded` / `ready`, surfaced on
   sigrun's `/v1/auth/check`) — seeded from credential resolution and
   updated per refresh outcome; state transitions log via `console.warn`
@@ -126,7 +129,7 @@ and `not_configured` readiness.
 ```jsonc
 // settings.json (sigrun config dir) — the UNIFIED extensions list:
 // install + load in one place; npm and git specifiers are the same list
-// npm ("@sigrun/provider-bifrost@^0.1.0"), git
+// npm ("@sigrun/provider-bifrost@^0.2.0"), git
 // ("git:github.com/sigrun-ai/sigrun-provider-bifrost", or any
 // https git URL with an optional @ref), or the file: form below.
 {

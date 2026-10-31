@@ -55,23 +55,27 @@ import {
 	PROVIDER_DISPLAY_NAME,
 	PROVIDER_ID,
 	UNRESOLVED_BASE_URL,
+	CHAIN_ID_PREFIX,
 	buildAllModels,
+	collidingMemberIds,
 	wireCatalog,
 	wireDiscovery,
 	wireRulesToChains,
 	wireScopeId,
 	type GatewayModel,
 } from "./catalog.js";
+import { withWireNames } from "./wire.js";
 
 // Re-exported gateway constants (the pi port's src/bifrost.ts surface):
 // the provider id is part of this plugin's public contract — sigrun's
 // auth-check names providers by id and tests pin the model stamp to it.
-export { PROVIDER_ID, PROVIDER_DISPLAY_NAME, UNRESOLVED_BASE_URL };
+export { PROVIDER_ID, PROVIDER_DISPLAY_NAME, UNRESOLVED_BASE_URL, CHAIN_ID_PREFIX };
 // Re-exported discovery/config types so consumers (and tests) need no
 // deep imports.
 export { parseBifrostSettings, BIFROST_BASE_URL_ENV } from "./config.js";
 export type { BifrostSettings, NativeProtocols } from "./config.js";
 export type { GatewayModel, SurfaceApi, CatalogModel, Chain, RoutingRule } from "./catalog.js";
+export { chainWireName, withWireNames } from "./wire.js";
 
 /** Ambient fallback for the virtual key when auth.json holds no credential. */
 export const BIFROST_API_KEY_ENV = "BIFROST_API_KEY";
@@ -91,6 +95,16 @@ export interface SigrunPluginHost {
 			set(value: Record<string, unknown>): Promise<void>;
 		};
 	};
+}
+
+let chainNamespaceWarned = false;
+
+function warnOnChainNamespaceCollision(catalog: readonly import("./catalog.js").CatalogModel[]): void {
+	if (chainNamespaceWarned || collidingMemberIds(catalog).length === 0) return;
+	console.warn(
+		'bifrost: upstream provider "chain" collides with the chain display namespace; its models are skipped',
+	);
+	chainNamespaceWarned = true;
 }
 
 /** Sigrun's three-state per-provider readiness vocabulary (Task 6). */
@@ -170,6 +184,7 @@ export async function discoverModels(
 			);
 		}
 		const { catalog, rules } = await wireDiscovery(managementToken, token, baseUrl, scopeId, signal);
+		warnOnChainNamespaceCollision(catalog);
 		const chains = wireRulesToChains(rules);
 		if (chains.length === 0) {
 			throw new Error(
@@ -201,6 +216,7 @@ export async function discoverModels(
 		);
 	}
 	const catalog = await wireCatalog(token, baseUrl, signal);
+	warnOnChainNamespaceCollision(catalog);
 	const models = buildAllModels(
 		[],
 		catalog,
@@ -245,6 +261,7 @@ export function createBifrostPlugin(options: BifrostPluginOptions): BifrostPlugi
 	// The ambient base URL, captured at credential resolution (the only
 	// place the env seam is available); the baked settings URL outranks it.
 	let ambientBaseUrl: string | undefined;
+	const wireNames = new Map<string, string>();
 
 	function status(): ProviderReadinessStatus {
 		if (!credentialResolved) return "not_configured";
@@ -326,9 +343,9 @@ export function createBifrostPlugin(options: BifrostPluginOptions): BifrostPlugi
 		// default). The map always registers all three: the registry entry
 		// is inert for models that never publish that api.
 		api: {
-			"openai-completions": openAICompletionsApi(),
-			"openai-responses": openAIResponsesApi(),
-			"anthropic-messages": anthropicMessagesApi(),
+			"openai-completions": withWireNames(openAICompletionsApi(), wireNames),
+			"openai-responses": withWireNames(openAIResponsesApi(), wireNames),
+			"anthropic-messages": withWireNames(anthropicMessagesApi(), wireNames),
 		},
 		fetchModels: async (context) => {
 			const key =
@@ -342,6 +359,10 @@ export function createBifrostPlugin(options: BifrostPluginOptions): BifrostPlugi
 			const url = options.baseUrl ?? ambientBaseUrl;
 			try {
 				const models = await discoverModels(key, url, options, context.signal);
+				wireNames.clear();
+				for (const model of models) {
+					if (model.id.startsWith(CHAIN_ID_PREFIX)) wireNames.set(model.id, model.name);
+				}
 				noteRefresh(true);
 				return models;
 			} catch (cause) {

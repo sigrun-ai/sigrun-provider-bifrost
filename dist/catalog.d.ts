@@ -14,6 +14,8 @@ import { type FetchJsonOptions } from "./http.js";
 import type { NativeProtocols } from "./config.js";
 /** The provider id models are registered (and stamped) under. */
 export declare const PROVIDER_ID = "bifrost";
+/** Sigrun-side chain display namespace; never sent to the gateway. */
+export declare const CHAIN_ID_PREFIX = "chain/";
 export declare const PROVIDER_DISPLAY_NAME = "Bifrost Gateway";
 /** Different relative to the configured /v1 base URL. */
 export declare const INFERENCE_PATH_MODELS = "models";
@@ -220,13 +222,15 @@ export declare function wireRulesToChains(rules: RoutingRule[]): Chain[];
 /** Convert a $/token wire string to pi's $/Mtok rate. */
 export declare function perMtok(dollarsPerToken: string): number | undefined;
 /**
- * Build one bifrost/<chain> chat model per chain. Cost is 0 by design. The
+ * Build one chain/<name> display model per chain. Cost is 0 by design. The
  * wire follows the chain's model-family (native protocol end to end): the
  * chain name decides — fallback legs of a chain are same-model by
  * construction, and the gateway translates any client wire for legs that
  * differ.
  */
 export declare function buildChainModels(chains: Chain[], catalog: CatalogModel[], providerSlug: string, baseUrl: string, native?: NativeProtocols): GatewayModel[];
+/** Catalog entries that collide with the reserved chain display namespace. */
+export declare function collidingMemberIds(catalog: readonly CatalogModel[]): string[];
 /**
  * Build direct-selectable models for the /v1/models catalog with real
  * per-member pricing, ordered with chain members first.

@@ -24,6 +24,8 @@ import type { NativeProtocols } from "./config.js";
 
 /** The provider id models are registered (and stamped) under. */
 export const PROVIDER_ID = "bifrost";
+/** Sigrun-side chain display namespace; never sent to the gateway. */
+export const CHAIN_ID_PREFIX = "chain/";
 export const PROVIDER_DISPLAY_NAME = "Bifrost Gateway";
 
 /** Different relative to the configured /v1 base URL. */
@@ -92,7 +94,7 @@ function bareModelName(id: string): string {
 	// Strip legacy managed prefixes (gateway/, bifrost/) if a rule CEL ever
 	// produces a prefixed bare name; MANAGED_PREFIXES itself is private to CEL
 	// decoding, so this local strip keeps the denylist honest at both call sites.
-	return noPrefix.replace(/^(gateway|bifrost)\//, "");
+	return noPrefix.replace(/^(gateway|bifrost|chain)\//, "");
 }
 
 function inputFor(id: string): ("text" | "image")[] {
@@ -348,7 +350,7 @@ export async function wireDiscovery(
 /* ---------- chain decoding (pure) ---------- */
 
 /** Managed model-id prefixes that strip to the bare chain name. */
-const MANAGED_PREFIXES = ["bifrost", "gateway"];
+const MANAGED_PREFIXES = ["bifrost", "gateway", "chain"];
 
 /**
  * Extract a chain model name from a routing rule's CEL expression.
@@ -432,7 +434,7 @@ function thinkingLevelMap(api: SurfaceApi, levels?: readonly string[]): Thinking
 }
 
 /**
- * Build one bifrost/<chain> chat model per chain. Cost is 0 by design. The
+ * Build one chain/<name> display model per chain. Cost is 0 by design. The
  * wire follows the chain's model-family (native protocol end to end): the
  * chain name decides — fallback legs of a chain are same-model by
  * construction, and the gateway translates any client wire for legs that
@@ -453,7 +455,7 @@ export function buildChainModels(
 			.filter((v): v is number => typeof v === "number");
 		const contextWindow = contexts.length > 0 ? Math.min(...contexts) : CONTEXT_WINDOW_FALLBACK;
 		return buildModel({
-			id: `${providerSlug}/${chain.name}`,
+			id: `${CHAIN_ID_PREFIX}${chain.name}`,
 			name: chain.name,
 			familyId: chain.name,
 			provider: providerSlug,
@@ -522,6 +524,11 @@ function buildModel(args: {
 	return model;
 }
 
+/** Catalog entries that collide with the reserved chain display namespace. */
+export function collidingMemberIds(catalog: readonly CatalogModel[]): string[] {
+	return catalog.filter((entry) => entry.id.startsWith(CHAIN_ID_PREFIX)).map((entry) => entry.id);
+}
+
 /**
  * Build direct-selectable models for the /v1/models catalog with real
  * per-member pricing, ordered with chain members first.
@@ -553,6 +560,7 @@ export function buildMemberModels(
 	}
 	const models: GatewayModel[] = [];
 	for (const memberId of memberIds) {
+		if (memberId.startsWith(CHAIN_ID_PREFIX)) continue;
 		const entry = byId.get(memberId);
 		if (!entry) continue; // chain member absent from /v1/models — skip rather than guess
 		const inputRate = entry.pricing ? perMtok(entry.pricing.prompt) : undefined;

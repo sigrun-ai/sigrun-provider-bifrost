@@ -24,6 +24,7 @@ import type {
 	AuthContext,
 	CredentialStore,
 	RefreshModelsContext,
+	TranscriptContext,
 } from "@earendil-works/pi-ai";
 import sigrunBifrost, {
 	BIFROST_API_KEY_ENV,
@@ -86,6 +87,7 @@ interface RecordedRequest {
 	readonly method: string;
 	readonly path: string;
 	readonly authorization?: string;
+	readonly body?: unknown;
 }
 
 let handler: (req: http.IncomingMessage, res: http.ServerResponse) => void;
@@ -96,12 +98,18 @@ const requests: RecordedRequest[] = [];
 beforeEach(async () => {
 	requests.length = 0;
 	server = http.createServer((req, res) => {
-		requests.push({
-			method: req.method ?? "",
-			path: (req.url ?? "").split("?")[0],
-			authorization: req.headers.authorization,
+		const chunks: Buffer[] = [];
+		req.on("data", (chunk: Buffer) => chunks.push(chunk));
+		req.on("end", () => {
+			const rawBody = Buffer.concat(chunks).toString("utf8");
+			requests.push({
+				method: req.method ?? "",
+				path: (req.url ?? "").split("?")[0],
+				authorization: req.headers.authorization,
+				...(rawBody.length > 0 ? { body: JSON.parse(rawBody) as unknown } : {}),
+			});
+			handler(req, res);
 		});
-		handler(req, res);
 	});
 	await new Promise<void>((resolve) => server!.listen(0, "127.0.0.1", resolve));
 	const address = server.address();
@@ -329,7 +337,7 @@ describe("chains mode (publishChains true)", () => {
 		expect(paths).toContain("/v1/models");
 
 		const ids = store.getModels(PROVIDER_ID).map((m) => m.id);
-		expect(ids[0]).toBe("bifrost/acme-flash");
+		expect(ids[0]).toBe("chain/acme-flash");
 		expect(ids).toContain("acme/acme-flash");
 		const chain = store.getModels(PROVIDER_ID)[0]!;
 		// min member context window; zero cost by design.
@@ -349,7 +357,7 @@ describe("chains mode (publishChains true)", () => {
 			managementApiKey: MGMT_KEY,
 		});
 		await store.refresh({ force: true });
-		expect(store.getModels(PROVIDER_ID).map((m) => m.id)).toEqual(["bifrost/acme-flash"]);
+		expect(store.getModels(PROVIDER_ID).map((m) => m.id)).toEqual(["chain/acme-flash"]);
 	});
 
 	it("managementApiKey overrides the VK on /api/* (the VK stays on /v1/*)", async () => {
@@ -401,6 +409,95 @@ describe("chains mode (publishChains true)", () => {
 		const refresh = await store.refresh({ force: true });
 		expect(refresh.errors.size).toBe(0);
 		expect(requests.find((r) => r.path === "/api/governance/virtual-keys")?.authorization).toBe(`Bearer ${VK_VALUE}`);
+	});
+
+	it("round trip: plugin dispatch sees chain/<name>, the gateway receives the bare name", async () => {
+		let innerModelId: string | undefined;
+		serveGateway();
+		const plugin = createBifrostPlugin({
+			publishChains: true,
+			publishUpstream: false,
+			baseUrl,
+			managementApiKey: MGMT_KEY,
+		});
+		const store = createModels({
+			credentials: credentialStore(VK_VALUE),
+			authContext: authContext({}),
+		});
+		store.setProvider(plugin.provider);
+		const refresh = await store.refresh({ force: true });
+		expect(refresh.errors.size).toBe(0);
+
+		const model = plugin.provider.getModels().find((entry) => entry.id === "chain/acme-flash");
+		expect(model).toBeDefined();
+		const pluginStreamSimple = plugin.provider.streamSimple;
+		const observed = {
+			...plugin.provider,
+			streamSimple: (...args: Parameters<typeof pluginStreamSimple>) => {
+				expect(args[0].id).toBe("chain/acme-flash");
+				return pluginStreamSimple(...args);
+			},
+		};
+		store.setProvider(observed);
+
+		handler = (req, res) => {
+			if (req.url !== "/v1/chat/completions") {
+				res.writeHead(404).end("{}");
+				return;
+			}
+			res.writeHead(200, { "content-type": "text/event-stream" });
+			res.end(
+				'data: {"id":"response-1","model":"acme/acme-flash","choices":[{"delta":{"content":"served"},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":1}}\n\n' +
+					"data: [DONE]\n\n",
+			);
+		};
+		const result = await observed.streamSimple(
+			model!,
+			{ messages: [{ role: "user", content: "hello", timestamp: 0 }] } as unknown as TranscriptContext,
+			{
+				apiKey: VK_VALUE,
+				maxRetries: 0,
+				onPayload: (_payload, innerModel) => {
+					innerModelId = innerModel.id;
+				},
+			},
+		).result();
+		expect(innerModelId).toBe("acme-flash");
+		const request = requests.find((entry) => entry.path === "/v1/chat/completions");
+		expect(request?.body).toMatchObject({ model: "acme-flash" });
+		expect(result.responseModel).toBe("acme/acme-flash");
+		expect(result.stopReason).not.toBe("error");
+	});
+
+	it("skips chain/ member ids and warns once per process for the namespace collision", async () => {
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+		try {
+			serveGateway();
+			const collidingCatalog = {
+				...CATALOG_BODY,
+				data: [...CATALOG_BODY.data, { id: "chain/foo", context_length: 128_000 }],
+			};
+			handler = (req, res) => {
+				if (req.url !== "/v1/models") {
+					res.writeHead(404).end("{}");
+					return;
+				}
+				res.writeHead(200, { "content-type": "application/json" });
+				res.end(JSON.stringify(collidingCatalog));
+			};
+			const options = { publishChains: false, publishUpstream: true, baseUrl };
+			const first = await discoverModels(VK_VALUE, baseUrl, options);
+			const second = await discoverModels(VK_VALUE, baseUrl, options);
+			for (const catalog of [first, second]) {
+				expect(catalog.some((model) => model.id === "chain/foo")).toBe(false);
+			}
+			const collisionWarnings = warn.mock.calls.filter((call) =>
+				String(call[0]).includes("upstream provider \"chain\" collides"),
+			);
+			expect(collisionWarnings).toHaveLength(1);
+		} finally {
+			warn.mockRestore();
+		}
 	});
 
 	it("a credential matching no VK throws (VK mismatch), never returns []", async () => {
