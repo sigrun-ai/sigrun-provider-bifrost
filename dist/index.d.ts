@@ -42,11 +42,12 @@
  */
 import { type Provider } from "@earendil-works/pi-ai/models";
 import { type NativeProtocols } from "./config.js";
-import { PROVIDER_DISPLAY_NAME, PROVIDER_ID, UNRESOLVED_BASE_URL, type GatewayModel } from "./catalog.js";
-export { PROVIDER_ID, PROVIDER_DISPLAY_NAME, UNRESOLVED_BASE_URL };
+import { PROVIDER_DISPLAY_NAME, PROVIDER_ID, UNRESOLVED_BASE_URL, CHAIN_ID_PREFIX, type GatewayModel } from "./catalog.js";
+export { PROVIDER_ID, PROVIDER_DISPLAY_NAME, UNRESOLVED_BASE_URL, CHAIN_ID_PREFIX };
 export { parseBifrostSettings, BIFROST_BASE_URL_ENV } from "./config.js";
 export type { BifrostSettings, NativeProtocols } from "./config.js";
 export type { GatewayModel, SurfaceApi, CatalogModel, Chain, RoutingRule } from "./catalog.js";
+export { chainWireName, withWireNames } from "./wire.js";
 /** Ambient fallback for the virtual key when auth.json holds no credential. */
 export declare const BIFROST_API_KEY_ENV = "BIFROST_API_KEY";
 /**

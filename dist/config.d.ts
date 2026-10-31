@@ -36,7 +36,7 @@ export interface NativeProtocols {
     messagesModels?: string[];
 }
 export interface BifrostSettings {
-    /** Emit chain models (bifrost/<chain>) from the VK's routing rules. */
+    /** Emit chain models (chain/<name>) from the VK's routing rules. */
     publishChains: boolean;
     /** Emit all upstream models from /v1/models as direct-selectable entries. */
     publishUpstream: boolean;

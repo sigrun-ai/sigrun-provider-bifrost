@@ -469,6 +469,37 @@ describe("chains mode (publishChains true)", () => {
 		expect(result.stopReason).not.toBe("error");
 	});
 
+	it("skips chain/ member ids and warns once per process for the namespace collision", async () => {
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+		try {
+			serveGateway();
+			const collidingCatalog = {
+				...CATALOG_BODY,
+				data: [...CATALOG_BODY.data, { id: "chain/foo", context_length: 128_000 }],
+			};
+			handler = (req, res) => {
+				if (req.url !== "/v1/models") {
+					res.writeHead(404).end("{}");
+					return;
+				}
+				res.writeHead(200, { "content-type": "application/json" });
+				res.end(JSON.stringify(collidingCatalog));
+			};
+			const options = { publishChains: false, publishUpstream: true, baseUrl };
+			const first = await discoverModels(VK_VALUE, baseUrl, options);
+			const second = await discoverModels(VK_VALUE, baseUrl, options);
+			for (const catalog of [first, second]) {
+				expect(catalog.some((model) => model.id === "chain/foo")).toBe(false);
+			}
+			const collisionWarnings = warn.mock.calls.filter((call) =>
+				String(call[0]).includes("upstream provider \"chain\" collides"),
+			);
+			expect(collisionWarnings).toHaveLength(1);
+		} finally {
+			warn.mockRestore();
+		}
+	});
+
 	it("a credential matching no VK throws (VK mismatch), never returns []", async () => {
 		serveGateway();
 		await expect(
