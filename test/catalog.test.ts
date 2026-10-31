@@ -18,6 +18,8 @@ import {
 	managementBase,
 	perMtok,
 	chainNameFromCel,
+	CHAIN_ID_PREFIX,
+	collidingMemberIds,
 } from "../src/catalog.js";
 import type { CatalogModel, RoutingRule } from "../src/catalog.js";
 
@@ -121,7 +123,7 @@ describe("wireRulesToChains", () => {
 	});
 });
 
-describe("chain id prefix (bifrost)", () => {
+describe("chain id prefixes", () => {
 	it("accepts a 3-arm cel (bare, gateway/, bifrost/) and strips managed prefixes", () => {
 		const rules = [
 			chainRule("acme-flash", "acme/acme-flash", [], 'model == "acme-flash" || model == "gateway/acme-flash" || model == "bifrost/acme-flash"'),
@@ -129,6 +131,11 @@ describe("chain id prefix (bifrost)", () => {
 		const chains = wireRulesToChains(rules);
 		expect(chains).toHaveLength(1);
 		expect(chains[0]?.name).toBe("acme-flash");
+	});
+
+	it("canonicalizes the sigrun display prefix to the gateway's bare chain name", () => {
+		const rules = [chainRule("x", "acme/x", [], 'model == "chain/x" || model == "x"')];
+		expect(wireRulesToChains(rules).map((chain) => chain.name)).toEqual(["x"]);
 	});
 
 	it("rejects cels with 2 model == arms that do not share one bare name", () => {
@@ -145,7 +152,18 @@ describe("chain id prefix (bifrost)", () => {
 });
 
 describe("buildChainModels", () => {
-	it("builds bifrost/<chain> entries stamped provider bifrost, min context window, zero cost", () => {
+	it("uses the chain/ display id while retaining the bare wire name", () => {
+		const [model] = buildChainModels(
+			[{ name: "glm-5.3-flash", primary: "acme/glm-5.3-flash", fallbacks: [] }],
+			[],
+			GATEWAY_ID,
+			BASE_URL,
+		);
+		expect(model?.id).toBe("chain/glm-5.3-flash");
+		expect(model?.name).toBe("glm-5.3-flash");
+	});
+
+	it("builds chain/<chain> display ids stamped provider bifrost, min context window, zero cost", () => {
 		const catalog = [
 			memberModel("acme/acme-flash", { context_length: 1_000_000 }),
 			memberModel("acme2/acme-flash", { context_length: 500_000 }),
@@ -154,7 +172,8 @@ describe("buildChainModels", () => {
 		const models = buildChainModels(chains, catalog, GATEWAY_ID, BASE_URL);
 		expect(models).toHaveLength(1);
 		const m = models[0]!;
-		expect(m.id).toBe("bifrost/acme-flash");
+		expect(m.id).toBe(`${CHAIN_ID_PREFIX}acme-flash`);
+		expect(m.name).toBe("acme-flash");
 		// THE stamp — pi-ai's restore path drops stored models whose
 		// provider field differs from the registered id.
 		expect(m.provider).toBe(GATEWAY_ID);
@@ -185,7 +204,7 @@ describe("buildChainModels", () => {
 			GATEWAY_ID,
 			BASE_URL,
 		);
-		expect(models[0]?.id).toBe("bifrost/acme-flash");
+		expect(models[0]?.id).toBe("chain/acme-flash");
 		expect(models[0]?.contextWindow).toBe(128_000);
 	});
 });
@@ -256,6 +275,14 @@ describe("the TEXT_ONLY denylist", () => {
 });
 
 describe("buildMemberModels", () => {
+	it("skips /v1/models entries in the reserved chain/ display namespace", () => {
+		const catalog = [memberModel("chain/foo"), memberModel("acme/acme-flash")];
+		expect(collidingMemberIds(catalog)).toEqual(["chain/foo"]);
+		expect(buildMemberModels([], catalog, GATEWAY_ID, BASE_URL).map((model) => model.id)).toEqual([
+			"acme/acme-flash",
+		]);
+	});
+
 	it("publishes one entry per unique member with real rates from the catalog", () => {
 		const catalog = [
 			memberModel("acme/acme-flash", { pricing: { prompt: "0.0000001633", completion: "0.0000005444" } }),
@@ -323,10 +350,10 @@ describe("buildAllModels", () => {
 		const catalog = [memberModel("acme/acme-flash")];
 		const chains = [{ name: "acme-flash", primary: "acme/acme-flash", fallbacks: [] }];
 		const all = buildAllModels(chains, catalog, GATEWAY_ID, BASE_URL, true, false);
-		expect(all.map((m) => m.id)).toEqual(["bifrost/acme-flash"]);
+		expect(all.map((m) => m.id)).toEqual(["chain/acme-flash"]);
 
 		const allWithMembers = buildAllModels(chains, catalog, GATEWAY_ID, BASE_URL, true, true);
-		expect(allWithMembers.map((m) => m.id)).toEqual(["bifrost/acme-flash", "acme/acme-flash"]);
+		expect(allWithMembers.map((m) => m.id)).toEqual(["chain/acme-flash", "acme/acme-flash"]);
 		for (const model of allWithMembers) {
 			expect(model.provider).toBe(GATEWAY_ID);
 		}
