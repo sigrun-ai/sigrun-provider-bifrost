@@ -12,6 +12,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-11-03
+### Fixed
+- Replies from chain models persist the `chain/` display id, so clients can
+  show where a message came from. Outgoing history is replayed under the
+  wire name, so chain models keep their thinking blocks and signatures.
+  Usage is now keyed `bifrost/chain/<name>`; earlier usage stays under
+  `bifrost/<name>`.
+
 ## [0.2.0] - 2026-10-30
 ### Changed
 - **Breaking:** chain model references change from `bifrost/bifrost/<chain>`
