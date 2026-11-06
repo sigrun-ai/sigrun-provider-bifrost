@@ -9,7 +9,7 @@
  * boot (restore-filter spike, Review Focus #3).
  */
 import type { Model } from "@earendil-works/pi-ai";
-import { Type } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import { type FetchJsonOptions } from "./http.js";
 import type { NativeProtocols } from "./config.js";
 /** The provider id models are registered (and stamped) under. */

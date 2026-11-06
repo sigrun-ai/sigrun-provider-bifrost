@@ -12,7 +12,7 @@
 // from typebox directly — typebox co-resolves with pi-ai everywhere pi-ai
 // resolves (it is pi-ai's own dependency), so the build-time-only devDep
 // posture is unchanged.
-import { Type } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import { Compile } from "typebox/compile";
 import { fetchJson } from "./http.js";
 /* ---------- gateway constants (pi port's src/bifrost.ts) ---------- */

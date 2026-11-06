@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
-import { Type } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import { Compile } from "typebox/compile";
 import { fetchJson, HttpError } from "../src/http.js";
 
