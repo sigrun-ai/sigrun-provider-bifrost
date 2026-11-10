@@ -6,7 +6,7 @@
  * `host.settings.declare`. Core draws the settings page's form from it,
  * applies the defaults and repairs a malformed stored value back to its
  * default; the per-key issues the deleted `parseBifrostSettings` collected
- * are now core's load-time warning plus an admin notice.
+ * are now core's load-time warning.
  *
  * Every key is `restart` (`x-sigrun-apply`): the factory reads this surface
  * ONCE and bakes it into the provider (both publish modes, the base URL,
@@ -198,7 +198,7 @@ export const BIFROST_SETTINGS_SCHEMA = asJsonSchema(
 					"Bearer for the management plane (/api/governance/virtual-keys, /api/routing/rules). Unset means the virtual key serves the management plane too. Kept in the secrets store, never in settings/provider-bifrost.json.",
 				// No minLength/pattern: core fills an ABSENT secret with ""
 				// before validating, so any shape constraint would report a
-				// repair (and post an admin notice) on EVERY boot of an
+				// repair (and log a boot-time warning) on EVERY boot of an
 				// install that never set one. "" is this key's own "unset" —
 				// exactly what an untouched secret field submits on save — and
 				// the factory maps it to undefined.

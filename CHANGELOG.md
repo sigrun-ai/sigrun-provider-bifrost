@@ -11,14 +11,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Settings are declared as JSON Schema** (`src/settings-schema.ts`) through
   `host.settings.declare`, so sigrun's extension page draws the form and core
-  applies the defaults and repairs a malformed stored value (load-time warning
-  plus an admin notice). The hand-written parser (`src/config.ts`) and its
+  applies the defaults and repairs a malformed stored value (load-time warning).
+  The hand-written parser (`src/config.ts`) and its
   suite are gone; the TypeScript settings type is the schema's `Static`.
   Every key is `restart`: the factory still reads the surface once and bakes
   it into the provider. Defaults are unchanged — `publishChains` false,
   `publishUpstream` true, no `baseUrl`, both native surfaces off.
 - Posture: a malformed `baseUrl` no longer reaches the client — it is repaired
-  away and the ambient `BIFROST_BASE_URL` applies. Exact-name lists are
+  away and the ambient `BIFROST_BASE_URL` applies. A value padded with
+  whitespace counts as malformed (the old parser trimmed it); strictness is
+  now the schema's `format: "uri"`. Exact-name lists are
   trimmed, de-duplicated, and dropped when nothing usable is left (an empty
   list would mean "no model matches", not "use the heuristic"). A
   `thinkingOverrides` entry keeps the parser's all-or-nothing rule: one

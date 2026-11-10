@@ -6,7 +6,7 @@
  * `host.settings.declare`. Core draws the settings page's form from it,
  * applies the defaults and repairs a malformed stored value back to its
  * default; the per-key issues the deleted `parseBifrostSettings` collected
- * are now core's load-time warning plus an admin notice.
+ * are now core's load-time warning.
  *
  * Every key is `restart` (`x-sigrun-apply`): the factory reads this surface
  * ONCE and bakes it into the provider (both publish modes, the base URL,

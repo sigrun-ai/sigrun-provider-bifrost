@@ -46,7 +46,7 @@ the provider into its `Models` store at boot.
 Declared as one JSON Schema (`src/settings-schema.ts`) through
 `host.settings.declare`, so sigrun's extension page renders the form,
 applies the defaults and repairs a malformed stored value (with a
-load-time warning and an admin notice). The schema is read **once at
+load-time warning). The schema is read **once at
 factory time** and **baked into the provider**: every key is
 `x-sigrun-apply: restart`, so an edited value lands at the next boot.
 
