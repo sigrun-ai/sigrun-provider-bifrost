@@ -11,7 +11,7 @@
 import type { Model } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import { type FetchJsonOptions } from "./http.js";
-import type { NativeProtocols } from "./config.js";
+import type { NativeProtocols } from "./settings-schema.js";
 /** The provider id models are registered (and stamped) under. */
 export declare const PROVIDER_ID = "bifrost";
 /** Sigrun-side chain display namespace; never sent to the gateway. */

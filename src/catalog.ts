@@ -18,7 +18,7 @@ import { Type } from "typebox";
 import type { Validator } from "typebox/compile";
 import { Compile } from "typebox/compile";
 import { fetchJson, type FetchJsonOptions } from "./http.js";
-import type { NativeProtocols } from "./config.js";
+import type { NativeProtocols } from "./settings-schema.js";
 
 /* ---------- gateway constants (pi port's src/bifrost.ts) ---------- */
 
