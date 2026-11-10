@@ -12,9 +12,6 @@
  */
 
 import http from "node:http";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	createModels,
@@ -28,13 +25,15 @@ import type {
 } from "@earendil-works/pi-ai";
 import sigrunBifrost, {
 	BIFROST_API_KEY_ENV,
+	BIFROST_BASE_URL_ENV,
+	BIFROST_MANAGEMENT_API_KEY_ENV,
+	BIFROST_MANAGEMENT_API_KEY_SECRET,
 	createBifrostPlugin,
 	discoverModels,
 	PROVIDER_ID,
 	type BifrostPluginOptions,
-	type SigrunPluginHost,
 } from "../src/index.js";
-import { BIFROST_BASE_URL_ENV } from "../src/config.js";
+import { createFakeHost } from "./fake-host.js";
 
 /* ---------- fixture gateway ---------- */
 
@@ -207,10 +206,7 @@ function directContext(): RefreshModelsContext {
 
 describe("the factory contract", () => {
 	it("returns a provider-only contributor with an empty baseline catalog", async () => {
-		const host: SigrunPluginHost = {
-			stores: { settings: { get: async () => ({}), set: async () => {} } },
-		};
-		const result = await sigrunBifrost(host);
+		const result = await sigrunBifrost(createFakeHost().host);
 		expect(result.name).toBe("provider-bifrost");
 		// Provider-only: no extension field (the loader's Task 1 pathway).
 		expect("extension" in result).toBe(false);
@@ -235,10 +231,7 @@ describe("the factory contract", () => {
 		// provider is member-only by default; observed through the request
 		// pattern of a refresh (catalog only, no /api/* calls).
 		serveGateway();
-		const host: SigrunPluginHost = {
-			stores: { settings: { get: async () => ({}), set: async () => {} } },
-		};
-		const result = await sigrunBifrost(host);
+		const result = await sigrunBifrost(createFakeHost().host);
 		const store = createModels({
 			credentials: credentialStore(VK_VALUE),
 			authContext: authContext({ [BIFROST_BASE_URL_ENV]: baseUrl }),
@@ -705,15 +698,10 @@ describe("readiness tracking", () => {
 describe("factory-time settings baking", () => {
 	it("the factory bakes the settings; later settings changes do not affect the built provider", async () => {
 		serveGateway();
-		let currentSettings: Record<string, unknown> = {
-			baseUrl,
-			publishChains: false,
-			publishUpstream: true,
-		};
-		const host: SigrunPluginHost = {
-			stores: { settings: { get: async () => currentSettings, set: async () => {} } },
-		};
-		const result = await sigrunBifrost(host);
+		const fake = createFakeHost({
+			settings: { baseUrl, publishChains: false, publishUpstream: true },
+		});
+		const result = await sigrunBifrost(fake.host);
 		const store = createModels({
 			credentials: credentialStore(VK_VALUE),
 			authContext: authContext({}),
@@ -726,94 +714,109 @@ describe("factory-time settings baking", () => {
 		// The operator flips the settings to chains mode AFTER the factory
 		// ran. The built provider keeps the member-only shape — settings are
 		// read ONCE at factory time; applying the change needs a restart.
-		currentSettings = {
+		await fake.save({
 			baseUrl,
 			publishChains: true,
 			publishUpstream: true,
 			managementApiKey: MGMT_KEY,
-		};
+		});
 		requests.length = 0;
 		const second = await store.refresh({ force: true });
 		expect(second.errors.size).toBe(0);
 		expect(requests.map((r) => r.path)).toEqual(["/v1/models"]);
 	});
 
-	it("parse issues warn and fall back to defaults, never quarantine", async () => {
+	it("a malformed value is repaired to its default and never quarantines", async () => {
 		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 		try {
-			const host: SigrunPluginHost = {
-				stores: {
-					settings: {
-						get: async () => ({ publishChains: "yes", unknownKey: 1 }),
-						set: async () => {},
-					},
-				},
-			};
-			const result = await sigrunBifrost(host);
+			const result = await sigrunBifrost(
+				createFakeHost({ settings: { publishChains: "yes", unknownKey: 1 } }).host,
+			);
 			expect(result.providers).toHaveLength(1);
 			const warned = warn.mock.calls.map(String).join(" ");
-			expect(warned).toContain("publishChains");
-			expect(warned).toContain("unknown settings key");
+			// Core's repair line names the JSON pointer it fixed; an unknown key
+			// survives the read (the Advanced pane lists it), so it is silent.
+			expect(warned).toContain("/publishChains");
+			expect(warned).not.toContain("unknownKey");
 		} finally {
 			warn.mockRestore();
 		}
 	});
 
-	it("resolves the real slug's settings file through the loader's two-phase host (file-backed)", async () => {
-		serveGateway();
-		// Mirrors sigrun-pareto's Task 9 P1 regression test: the loader
-		// pre-keys the factory host on the slug derived from the LOAD
-		// SPECIFIER (this package's manifest name), so the factory-time
-		// settings read resolves settings/provider-bifrost.json. The store
-		// here is FILE-BACKED exactly like sigrun's scopedExtensionStores
-		// (absent file → {}).
-		const pkg = JSON.parse(
-			await readFile(join(import.meta.dirname, "..", "package.json"), "utf8"),
-		) as { name: string };
-		const slug = pkg.name
-			.split("/")
-			.pop()!
-			.replace(/@[^@]*$/, "")
-			.toLowerCase()
-			.replace(/[^a-z0-9_-]+/g, "-")
-			.replace(/^[-_]+|[-_]+$/g, "");
-		expect(slug).toBe("provider-bifrost");
+});
 
-		const dir = await mkdtemp(join(tmpdir(), "sigrun-bifrost-host-"));
-		try {
-			const settingsFile = join(dir, "settings", `${slug}.json`);
-			await mkdir(dirname(settingsFile), { recursive: true });
-			await writeFile(settingsFile, JSON.stringify({ baseUrl }));
-			const host: SigrunPluginHost = {
-				stores: {
-					settings: {
-						get: async () => {
-							try {
-								return JSON.parse(await readFile(settingsFile, "utf8")) as Record<string, unknown>;
-							} catch {
-								return {}; // absent file → {} (the store's contract)
-							}
-						},
-						set: async () => {
-							throw new Error("unexpected settings write in tests");
-						},
-					},
-				},
-			};
-			const result = await sigrunBifrost(host);
-			const store = createModels({
-				credentials: credentialStore(VK_VALUE),
-				authContext: authContext({}),
-			});
-			store.setProvider(result.providers[0]!.provider);
-			const refresh = await store.refresh({ force: true });
-			expect(refresh.errors.size).toBe(0);
-			// The settings-file override (this run's fixture server) won: the
-			// default member-only catalog GET hit it and every model carries it.
-			expect(requests.map((r) => r.path)).toEqual(["/v1/models"]);
-			expect(store.getModels(PROVIDER_ID).every((m) => m.baseUrl === baseUrl)).toBe(true);
-		} finally {
-			await rm(dir, { recursive: true, force: true });
-		}
+/* ---------- the management key: a settings secret ---------- */
+
+describe("the management credential", () => {
+	it("moved secret still reaches the client", async () => {
+		serveGateway();
+		// THE MOVE, client side: the pre-rework file holds the key as a plain
+		// settings value; after the factory has run the file no longer carries
+		// it and the secrets store does — and chains-mode discovery still
+		// authenticates /api/* with it (the fixture gateway answers 401 to any
+		// other bearer).
+		const fake = createFakeHost({
+			settings: { baseUrl, publishChains: true, publishUpstream: true, managementApiKey: MGMT_KEY },
+		});
+		const result = await sigrunBifrost(fake.host);
+		expect(Object.hasOwn(fake.file, "managementApiKey")).toBe(false);
+		expect(fake.secrets[BIFROST_MANAGEMENT_API_KEY_SECRET]).toBe(MGMT_KEY);
+
+		const store = createModels({
+			credentials: credentialStore(VK_VALUE),
+			authContext: authContext({}),
+		});
+		store.setProvider(result.providers[0]!.provider);
+		const refresh = await store.refresh({ force: true });
+		expect(refresh.errors.size).toBe(0);
+		const management = requests.filter((r) => r.path.startsWith("/api/"));
+		expect(management.map((r) => r.path)).toEqual([
+			"/api/governance/virtual-keys",
+			"/api/routing/rules",
+		]);
+		for (const request of management) expect(request.authorization).toBe(`Bearer ${MGMT_KEY}`);
+		expect(store.getModels(PROVIDER_ID)[0]!.id).toBe("chain/acme-flash");
+	});
+
+	it("the ambient BIFROST_MANAGEMENT_API_KEY resolves when no stored secret exists", async () => {
+		serveGateway();
+		// A deployment may inject the credential as an env var instead of a
+		// stored secret; the env seam is only reachable at credential
+		// resolution, so the value is captured there and used on the refresh.
+		const fake = createFakeHost({
+			settings: { baseUrl, publishChains: true, publishUpstream: true },
+		});
+		const result = await sigrunBifrost(fake.host);
+		const store = createModels({
+			credentials: credentialStore(VK_VALUE),
+			authContext: authContext({ [BIFROST_MANAGEMENT_API_KEY_ENV]: MGMT_KEY }),
+		});
+		store.setProvider(result.providers[0]!.provider);
+		const refresh = await store.refresh({ force: true });
+		expect(refresh.errors.size).toBe(0);
+		const management = requests.filter((r) => r.path.startsWith("/api/"));
+		expect(management.length).toBeGreaterThan(0);
+		for (const request of management) expect(request.authorization).toBe(`Bearer ${MGMT_KEY}`);
+	});
+
+	it("without either, the virtual key itself serves the management plane", async () => {
+		serveGateway();
+		// Unchanged pre-existing fallback: no stored secret and no env key means
+		// `discoverModels` uses the VK — the fixture gateway then rejects /api/*
+		// (its management bearer is the separate admin key), which is exactly
+		// what "no management credential configured" has always looked like.
+		const fake = createFakeHost({
+			settings: { baseUrl, publishChains: true, publishUpstream: true },
+		});
+		const result = await sigrunBifrost(fake.host);
+		const store = createModels({
+			credentials: credentialStore(VK_VALUE),
+			authContext: authContext({}),
+		});
+		store.setProvider(result.providers[0]!.provider);
+		const refresh = await store.refresh({ force: true });
+		expect(refresh.errors.size).toBeGreaterThan(0);
+		const management = requests.filter((r) => r.path.startsWith("/api/"));
+		for (const request of management) expect(request.authorization).toBe(`Bearer ${VK_VALUE}`);
 	});
 });

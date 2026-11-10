@@ -43,20 +43,24 @@ the provider into its `Models` store at boot.
 
 ## Settings
 
-Read **once at factory time** from the plugin's scoped settings —
-`settings/provider-bifrost.json` in the sigrun config dir — and **baked
-into the provider**; applying a change requires a restart (sigrun's
-loader pre-keys the factory host on the provisional slug, so the
-factory-time read resolves this file). Absent file = defaults.
-Wrong-typed values and unknown keys warn and fall back — never fatal.
+Declared as one JSON Schema (`src/settings-schema.ts`) through
+`host.settings.declare`, so sigrun's extension page renders the form,
+applies the defaults and repairs a malformed stored value (with a
+load-time warning and an admin notice). The schema is read **once at
+factory time** and **baked into the provider**: every key is
+`x-sigrun-apply: restart`, so an edited value lands at the next boot.
+
+The declared name and this package's name are the same string
+(`provider-bifrost`), so the loader's provisional slug IS the final slug
+and the factory-time read resolves `settings/provider-bifrost.json`.
 
 ```jsonc
-// settings/provider-bifrost.json
+// settings/provider-bifrost.json — the same document the page edits
 {
 	"baseUrl": "https://your-bifrost.example/v1", // settings wins, then BIFROST_BASE_URL
 	"publishChains": false,   // chains mode when true (needs management plane)
 	"publishUpstream": true,  // upstream catalog entries (both modes)
-	"managementApiKey": "…",  // /api/* bearer; falls back to the VK
+	"managementApiKey": "…",  // /api/* bearer — a SECRET (see below)
 	"thinkingOverrides": {    // per-member ladders keyed "provider/model";
 		"acme/model-x": ["low", "high"] // replaces the full default ladder
 	},
@@ -64,19 +68,45 @@ Wrong-typed values and unknown keys warn and fall back — never fatal.
 		"responses": true,   // gpt-family → openai-responses
 		"messages": true,    // claude-family → anthropic-messages at <root>/anthropic
 		"responsesModels": ["gpt-6-luna"], // exact-name lists REPLACE the heuristic
-		"messagesModels": ["claude-sonnet-5-5"]
+		"messagesModels": ["claude-acme"]
 	}
 }
 ```
 
-**Plaintext caveat:** this settings file is plain JSON — it has none of
-`auth.json`'s `0600` discipline. That is consistent with sigrun's
-operator-provisioned-plaintext posture: `managementApiKey` is
-provisioned by the operator into the config dir exactly like
-`settings.json` itself, and anything needing secret-handling semantics
-belongs in the VK (`auth.json` / `BIFROST_API_KEY`) instead — the
-management plane deliberately falls back to the VK when no separate key
-is set.
+Defaults are the pre-rework parser's: `publishChains` **false**,
+`publishUpstream` **true**, no `baseUrl` (the ambient `BIFROST_BASE_URL`
+applies), both native surfaces off, no management key. Leniency is
+per-key and never fatal:
+
+- `baseUrl` must parse as a URI; a malformed one is repaired away, so the
+  ambient `BIFROST_BASE_URL` takes over instead of a bad URL reaching the
+  client.
+- An exact-name list is trimmed, de-duplicated, and dropped entirely when
+  nothing usable is left — an EMPTY list would mean "no model matches",
+  not "use the built-in heuristic".
+- A `thinkingOverrides` entry is all-or-nothing, as before: one unknown
+  level and that member keeps its full default ladder.
+- Unknown top-level keys survive the read and are listed in the page's
+  Advanced part.
+
+### The management key is a secret
+
+`managementApiKey` is `writeOnly`: the value lives in this extension's
+section of sigrun's `secrets.json` (key `managementApiKey` — the bare
+property name, sigrun's encoding for a top-level secret) and is never
+written back to `settings/provider-bifrost.json`. The page shows it under
+Credentials as "set", never as a value.
+
+- **Existing installs:** a file that still carries `managementApiKey`
+  keeps working. On the first boot that sees it the extension moves the
+  value into the secrets store and strips it from the file (a value
+  already stored wins), so the plaintext copy disappears without a manual
+  edit.
+- **Env fallback:** `BIFROST_MANAGEMENT_API_KEY`, read through sigrun's
+  env seam at credential-resolution time. Precedence is the settings
+  secret, then that variable, then the virtual key — the virtual key
+  still serves `/api/*` when nothing else is set, the right shape for
+  dashboard-auth-disabled deployments.
 
 ### Native protocol surfaces
 
@@ -102,16 +132,19 @@ the ambient environment:
 2. `BIFROST_API_KEY`.
 
 The base URL resolves settings-`baseUrl` first, then the ambient
-`BIFROST_BASE_URL`. Both env reads go through sigrun's env seam — the
-plugin never reads auth.json or `process.env` itself. There is **no
+`BIFROST_BASE_URL`; the management key resolves the settings secret
+first, then `BIFROST_MANAGEMENT_API_KEY`, then the VK. All env reads go
+through sigrun's env seam — the plugin never reads auth.json or
+`process.env` itself. There is **no
 /login flow** (the pi port's interactive login has no sigrun analog);
 rotating the key or the env URL applies on the next resolution — no
 restart. Settings changes DO need a restart (baked at factory time).
 
-`managementApiKey` comes from scoped settings only and is used as the
-bearer on `/api/*` (VK lookup + routing rules); the inference catalog
-always uses the VK itself. When unset, the VK serves the management
-plane too — the right shape for dashboard-auth-disabled deployments.
+`managementApiKey` (a settings secret — see
+[Settings](#the-management-key-is-a-secret)) is the bearer on `/api/*`
+(VK lookup + routing rules); the inference catalog always uses the VK
+itself. Precedence is the settings secret, then the ambient
+`BIFROST_MANAGEMENT_API_KEY`, then the VK.
 
 ## Failure semantics
 

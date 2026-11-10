@@ -11,15 +11,21 @@
  * pathway). The port's two deliberate adaptations:
  *
  * - CONFIG: pi's config file becomes the plugin's SCOPED SETTINGS
- *   (`settings/provider-bifrost.json`), read ONCE at factory time —
- *   restart-required (sigrun's loader pre-keys the factory host on the
- *   provisional slug so the factory-time read resolves this package's
- *   file). No /login flow; no pi config file.
+ *   (`settings/provider-bifrost.json`), DECLARED as JSON Schema
+ *   (`src/settings-schema.ts`) and read ONCE at factory time —
+ *   restart-required. Core owns the generated settings page, the defaults
+ *   and the malformed-value repair; the declared name and the package name
+ *   are the same string, so the loader's provisional slug IS the final slug
+ *   (`provider-bifrost`) and the factory-body read resolves the file the
+ *   settings page writes. No /login flow; no pi config file.
  * - CREDENTIALS: the VK comes from sigrun's auth.json bridge (the stored
  *   credential arrives as `credential` on the auth resolver) with
  *   `BIFROST_API_KEY` as the ambient fallback; the ambient base URL
- *   (`BIFROST_BASE_URL`) resolves through the same env seam. The plugin
- *   never reads auth.json or `process.env` itself.
+ *   (`BIFROST_BASE_URL`) and management key (`BIFROST_MANAGEMENT_API_KEY`)
+ *   resolve through the same env seam. The plugin never reads auth.json or
+ *   `process.env` itself. The management key itself is a SETTINGS SECRET
+ *   (`managementApiKey`, `writeOnly`): core keeps it in the secrets store,
+ *   never in `settings/provider-bifrost.json`.
  *
  * Two discovery modes (settings `publishChains`, default false):
  * - chains mode: the management plane is queried — VK self-identification
@@ -44,17 +50,27 @@ import { createProvider } from "@earendil-works/pi-ai/models";
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
 import { openAIResponsesApi } from "@earendil-works/pi-ai/api/openai-responses.lazy";
 import { anthropicMessagesApi } from "@earendil-works/pi-ai/api/anthropic-messages.lazy";
-import { BIFROST_BASE_URL_ENV, parseBifrostSettings, } from "./config.js";
+import { BIFROST_BASE_URL_ENV, BIFROST_MANAGEMENT_API_KEY_ENV, BIFROST_SETTINGS_SCHEMA, THINKING_LEVELS, } from "./settings-schema.js";
 import { PROVIDER_DISPLAY_NAME, PROVIDER_ID, UNRESOLVED_BASE_URL, CHAIN_ID_PREFIX, buildAllModels, collidingMemberIds, wireCatalog, wireDiscovery, wireRulesToChains, wireScopeId, } from "./catalog.js";
 import { withWireNames } from "./wire.js";
 // Re-exported gateway constants (the pi port's src/bifrost.ts surface):
 // the provider id is part of this plugin's public contract — sigrun's
 // auth-check names providers by id and tests pin the model stamp to it.
 export { PROVIDER_ID, PROVIDER_DISPLAY_NAME, UNRESOLVED_BASE_URL, CHAIN_ID_PREFIX };
-// Re-exported discovery/config types so consumers (and tests) need no
-// deep imports.
-export { parseBifrostSettings, BIFROST_BASE_URL_ENV } from "./config.js";
+// Re-exported settings types so consumers (and tests) need no deep
+// imports: the schema itself, the `Static` settings type, and the
+// native-surface selection the catalog builders consume.
+export { BIFROST_BASE_URL_ENV, BIFROST_MANAGEMENT_API_KEY_ENV, BIFROST_SETTINGS_SCHEMA, THINKING_LEVELS, } from "./settings-schema.js";
 export { chainWireName, withWireNames } from "./wire.js";
+/**
+ * The secrets-store key this plugin's management credential lives under —
+ * the bare property name, which is what core's encoding uses for a
+ * TOP-LEVEL `writeOnly` setting (`src/settings/schema/secrets.ts`: "a
+ * top-level secret keeps its bare name"). This is also the key the legacy
+ * migration writes, so the value it moves is the one the checked read
+ * fills back in.
+ */
+export const BIFROST_MANAGEMENT_API_KEY_SECRET = "managementApiKey";
 /** Ambient fallback for the virtual key when auth.json holds no credential. */
 export const BIFROST_API_KEY_ENV = "BIFROST_API_KEY";
 let chainNamespaceWarned = false;
@@ -120,8 +136,10 @@ export async function discoverModels(token, baseUrl, options, signal) {
 /**
  * Build the Bifrost provider plus its readiness/health trackers.
  * `options` are the FACTORY-BAKED settings (restart-required); the ambient
- * `BIFROST_BASE_URL` resolves at credential-resolution time through the
- * env seam and falls below the baked `baseUrl` in precedence.
+ * `BIFROST_BASE_URL` and `BIFROST_MANAGEMENT_API_KEY` resolve at
+ * credential-resolution time through the env seam and fall below the baked
+ * settings in precedence (a settings `managementApiKey` — secret store or a
+ * legacy file value — outranks the ambient management key).
  */
 export function createBifrostPlugin(options) {
     // Tracker state: seeded from credential resolution (pi-ai never
@@ -132,9 +150,11 @@ export function createBifrostPlugin(options) {
     let lastRefreshFailed = false;
     let lastRefreshDetail;
     let lastAnnounced;
-    // The ambient base URL, captured at credential resolution (the only
-    // place the env seam is available); the baked settings URL outranks it.
+    // The ambient base URL and management key, captured at credential
+    // resolution (the only place the env seam is available); the baked
+    // settings values outrank both.
     let ambientBaseUrl;
+    let ambientManagementApiKey;
     const wireNames = new Map();
     function status() {
         if (!credentialResolved)
@@ -183,6 +203,14 @@ export function createBifrostPlugin(options) {
                     const envUrl = (await ctx.env(BIFROST_BASE_URL_ENV))?.trim() || undefined;
                     if (envUrl !== undefined)
                         ambientBaseUrl = envUrl;
+                    // The management credential rides the same seam: a
+                    // deployment can inject it as an env var instead of
+                    // setting the stored secret, and rotating it applies on
+                    // the next resolution like every other ambient value.
+                    const envManagementApiKey = (await ctx.env(BIFROST_MANAGEMENT_API_KEY_ENV))?.trim() || undefined;
+                    if (envManagementApiKey !== undefined) {
+                        ambientManagementApiKey = envManagementApiKey;
+                    }
                     // Bridged auth.json credential (sigrun's bridge: the
                     // "default" entry first, then the provider's own) wins;
                     // the env var is the ambient fallback.
@@ -224,8 +252,15 @@ export function createBifrostPlugin(options) {
             // context.baseUrl is IGNORED — it echoes this provider's
             // registration URL, which may be the never-requested placeholder.
             const url = options.baseUrl ?? ambientBaseUrl;
+            // The settings secret (store, else a legacy file value) outranks
+            // the ambient env key; the virtual key is the last resort inside
+            // discovery.
+            const effective = {
+                ...options,
+                managementApiKey: options.managementApiKey ?? ambientManagementApiKey,
+            };
             try {
-                const models = await discoverModels(key, url, options, context.signal);
+                const models = await discoverModels(key, url, effective, context.signal);
                 wireNames.clear();
                 for (const model of models) {
                     if (model.id.startsWith(CHAIN_ID_PREFIX))
@@ -261,33 +296,156 @@ export function createBifrostPlugin(options) {
     };
 }
 /**
+ * Move a PRE-REWORK management key out of `settings/provider-bifrost.json`
+ * into the secrets store, then strip it from the file.
+ *
+ * Core's save path strips a `writeOnly` property from what it writes and
+ * takes a new value from the submitted form — it cannot know that a value
+ * already sitting IN the file was a secret, so the first save of the page
+ * would drop it. Core's checked read keeps handing that file value back
+ * (that is what makes it work on the boot that still has it), which leaves
+ * exactly this housekeeping to the extension: store it under the declared
+ * key, then delete it from the file.
+ *
+ * Precedence is core's ("stored wins"): a value already in the secrets store
+ * is never overwritten, and the stale file copy is still removed. The store
+ * write happens BEFORE the file rewrite, and a failure leaves the file
+ * untouched (warned, never fatal) — the value is then still read from the
+ * file and the next boot retries. A file value that is not a usable string
+ * is left alone: core's checked read repairs it (with a notice) and there is
+ * nothing to move.
+ */
+export async function migrateLegacyManagementApiKey(stores, stored) {
+    if (!Object.hasOwn(stored, "managementApiKey"))
+        return;
+    const value = typeof stored.managementApiKey === "string" ? stored.managementApiKey.trim() : "";
+    // Nothing usable to move (a wrong-typed value, or blank): leave the file
+    // alone — core's checked read repairs it with its own notice, and there is
+    // no secret to lose.
+    if (value === "")
+        return;
+    try {
+        // The file is rewritten wholesale, so everything else it holds
+        // (declared and unknown keys alike) is preserved.
+        const { managementApiKey: _moved, ...rest } = stored;
+        const existing = await stores.secrets.get(BIFROST_MANAGEMENT_API_KEY_SECRET);
+        if (existing === undefined || existing === "") {
+            await stores.secrets.set(BIFROST_MANAGEMENT_API_KEY_SECRET, value);
+        }
+        await stores.settings.set(rest);
+        console.warn(`provider-bifrost: moved managementApiKey out of settings/provider-bifrost.json ` +
+            "into the secrets store (key managementApiKey)");
+    }
+    catch (error) {
+        console.warn(`provider-bifrost: could not move managementApiKey into the secrets store ` +
+            `(${error instanceof Error ? error.message : String(error)}); ` +
+            "settings/provider-bifrost.json is unchanged");
+    }
+}
+/**
+ * Normalise the exact-name lists the deleted parser trimmed: each name loses
+ * its surrounding whitespace and duplicates collapse, preserving order.
+ *
+ * JSON Schema cannot trim, and the names are matched against bare model ids,
+ * so an untrimmed name would silently match nothing. An emptied list is
+ * dropped rather than left empty: `surfaceFor` reads an EMPTY list as "no
+ * model matches" (the surface goes dark even with its toggle on), while an
+ * ABSENT list means "use the built-in family heuristic" — the parser's own
+ * reading for a list it could not use.
+ */
+export function usableNativeProtocols(native) {
+    if (native === undefined)
+        return undefined;
+    const names = (list) => {
+        if (list === undefined)
+            return undefined;
+        const trimmed = [...new Set(list.map((name) => name.trim()))].filter((name) => name !== "");
+        return trimmed.length > 0 ? trimmed : undefined;
+    };
+    return {
+        responses: native.responses,
+        messages: native.messages,
+        ...(names(native.responsesModels) !== undefined
+            ? { responsesModels: names(native.responsesModels) }
+            : {}),
+        ...(names(native.messagesModels) !== undefined
+            ? { messagesModels: names(native.messagesModels) }
+            : {}),
+    };
+}
+/**
+ * Apply the deleted parser's all-or-nothing thinking-ladder rule.
+ *
+ * One unknown level makes that member's WHOLE entry be ignored, so the member
+ * keeps its default ladder — the deleted parser's own comment: "a ladder the
+ * author didn't fully know must not be half-applied". Core cannot enforce it:
+ * its repair addresses each failing value by JSON pointer, and a member id
+ * contains "/" (every real id is `provider/model`), so for such a key the
+ * repair resolves no target and leaves the bad level in place (verified) —
+ * where it would reach `catalog.ts` as a level pi-ai cannot map.
+ *
+ * The rest of the key's leniency is core's: a group that is not an object, an
+ * entry that is not a list, and an emptied ladder are all removed — the same
+ * outcome the parser produced.
+ */
+export function usableThinkingOverrides(ladders, warn) {
+    if (ladders === undefined)
+        return undefined;
+    const known = new Set(THINKING_LEVELS);
+    const overrides = {};
+    // Core leaves these values untouched (see above), so a row is not
+    // necessarily a list of level names by the time it arrives.
+    for (const [memberId, ladder] of Object.entries(ladders)) {
+        const usable = Array.isArray(ladder) &&
+            ladder.length > 0 &&
+            ladder.every((level) => typeof level === "string" && known.has(level));
+        if (!usable) {
+            warn(`provider-bifrost: thinkingOverrides["${memberId}"] names an unknown level; ` +
+                "the entry is ignored and the member keeps the full ladder");
+            continue;
+        }
+        overrides[memberId] = ladder;
+    }
+    return Object.keys(overrides).length > 0 ? overrides : undefined;
+}
+/**
  * The sigrun extension-package factory (provider-only contributor).
  * Arity 1 declares the host-taking signature — sigrun's loader passes the
  * seam host only to factories that declare one (`factory.length > 0`) —
- * and the factory is ASYNC because the scoped settings store is
+ * and the factory is ASYNC because the declared-settings read is
  * async-only; sigrun's loader awaits factory results.
  *
- * Settings are read ONCE here and BAKED into the provider (the
- * restart-required semantics: the loader pre-keys the host on the
- * provisional slug — this package's manifest name — so the factory-time
- * read resolves `settings/provider-bifrost.json`). Parse issues log via
- * `console.warn` and never quarantine (a wrong-typed key falls back to
- * its default, exactly like the pi port's issue list).
+ * Settings are DECLARED first (`src/settings-schema.ts` — core owns the
+ * page, the defaults and the malformed-value repair) and read ONCE, then
+ * baked into the provider: every key is factory-time, so every property is
+ * `restart`. The declared name and this package's name are the same string
+ * (`provider-bifrost`), so the loader's provisional slug IS the final slug
+ * and the factory-time read resolves `settings/provider-bifrost.json`.
+ *
+ * Two rules the declared schema cannot state live here: a pre-rework
+ * `managementApiKey` is moved into the secrets store
+ * (`migrateLegacyManagementApiKey`), and the thinking ladders keep the
+ * parser's all-or-nothing levels (`usableThinkingOverrides`).
  */
 export default async function sigrunBifrost(host) {
-    const raw = await host.stores.settings.get();
-    const issues = [];
-    const settings = parseBifrostSettings(raw, issues);
-    for (const issue of issues) {
-        console.warn(`provider-bifrost: settings/provider-bifrost.json: ${issue}`);
-    }
+    const declared = host.settings.declare({
+        schema: BIFROST_SETTINGS_SCHEMA,
+    });
+    // The stored file, for the one rule that must read the DOCUMENT rather
+    // than the checked read: the pre-rework management key's move (core cannot
+    // know that an in-file value was a secret). Everything else comes through
+    // the handle.
+    await migrateLegacyManagementApiKey(host.stores, await host.stores.settings.get());
+    const settings = await declared.get();
+    // The checked read fills "" for an unset secret: "" means unset here,
+    // exactly as an untouched secret field submits it on save.
     const plugin = createBifrostPlugin({
         publishChains: settings.publishChains,
         publishUpstream: settings.publishUpstream,
-        baseUrl: settings.baseUrl,
-        managementApiKey: settings.managementApiKey,
-        nativeProtocols: settings.nativeProtocols,
-        thinkingOverrides: settings.thinkingOverrides,
+        baseUrl: settings.baseUrl?.trim() || undefined,
+        managementApiKey: settings.managementApiKey?.trim() || undefined,
+        nativeProtocols: usableNativeProtocols(settings.nativeProtocols),
+        thinkingOverrides: usableThinkingOverrides(settings.thinkingOverrides, (message) => console.warn(message)),
     });
     return {
         name: "provider-bifrost",

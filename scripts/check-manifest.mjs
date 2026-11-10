@@ -81,9 +81,30 @@ const DEV_PIN_OVERRIDES = {
 	"@earendil-works/pi-codemode": "1.5.0",
 	"@earendil-works/pi-durable": "1.5.0",
 };
+/**
+ * `@sigrun/sigrun` is the host the declared-settings contract comes from:
+ * `host.settings.declare` plus the `@sigrun/sigrun/settings-schema`
+ * authoring surface the test suite proves the schema against. Its dev pin is
+ * the REGISTRY release (not a sibling link): this repo's CI runs without a
+ * core checkout (`needs-core: false`), so the version installed here must be
+ * the published one, while the peer floor stays a floor.
+ */
+const CORE_MODULE = "@sigrun/sigrun";
+const CORE_PEER = ">=0.13.0";
+const CORE_DEV = "0.13.0";
+
 const peers = manifest.peerDependencies ?? {};
 const devDeps = manifest.devDependencies ?? {};
+check(
+	peers[CORE_MODULE] === CORE_PEER,
+	`package.json: peerDependencies["${CORE_MODULE}"] must be "${CORE_PEER}" (got ${JSON.stringify(peers[CORE_MODULE])})`,
+);
+check(
+	devDeps[CORE_MODULE] === CORE_DEV,
+	`package.json: devDependencies["${CORE_MODULE}"] must be the registry release "${CORE_DEV}" (got ${JSON.stringify(devDeps[CORE_MODULE])})`,
+);
 for (const [module, spec] of Object.entries(peers)) {
+	if (module === CORE_MODULE) continue;
 	check(
 		module in HOST_MODULE_PINS,
 		`package.json: peerDependencies carries non-host module "${module}"`,

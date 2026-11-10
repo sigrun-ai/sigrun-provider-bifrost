@@ -5,6 +5,45 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **Settings are declared as JSON Schema** (`src/settings-schema.ts`) through
+  `host.settings.declare`, so sigrun's extension page draws the form and core
+  applies the defaults and repairs a malformed stored value (load-time warning
+  plus an admin notice). The hand-written parser (`src/config.ts`) and its
+  suite are gone; the TypeScript settings type is the schema's `Static`.
+  Every key is `restart`: the factory still reads the surface once and bakes
+  it into the provider. Defaults are unchanged — `publishChains` false,
+  `publishUpstream` true, no `baseUrl`, both native surfaces off.
+- Posture: a malformed `baseUrl` no longer reaches the client — it is repaired
+  away and the ambient `BIFROST_BASE_URL` applies. Exact-name lists are
+  trimmed, de-duplicated, and dropped when nothing usable is left (an empty
+  list would mean "no model matches", not "use the heuristic"). A
+  `thinkingOverrides` entry keeps the parser's all-or-nothing rule: one
+  unknown level and that member keeps its full ladder.
+- Peers: `@sigrun/sigrun >=0.13.0` (the release carrying
+  `host.settings.declare`), `typebox` `1.3.27` promoted to a peer as well as
+  the dev pin. The core dev dependency is the REGISTRY release rather than a
+  sibling link, because this repo's CI runs without a core checkout.
+
+### Security
+
+- **`managementApiKey` moved out of the settings file.** It is now a
+  `writeOnly` property: the value lives in this extension's section of
+  sigrun's `secrets.json` (key `managementApiKey`) and is never written back
+  to `settings/provider-bifrost.json`. A pre-rework file that still carries
+  the key keeps working — the factory moves the value into the secrets store
+  on the first boot that sees it and strips it from the file (a value already
+  stored wins), so the plaintext copy disappears without a manual edit.
+
+### Added
+
+- `BIFROST_MANAGEMENT_API_KEY` — ambient management-plane credential, read
+  through sigrun's env seam at credential resolution. Precedence is the
+  settings secret, then this variable, then the virtual key.
+
 ## [0.2.3] - 2026-11-08
 
 - CI: grant actions: read to the release workflow (the release-test skip lookup). No code change.
