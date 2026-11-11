@@ -3,6 +3,7 @@
 # file's name (release.yml) in THIS repo — that is the OIDC trust
 # configuration, so the name must not change. permissions id-token:
 # write is the OIDC grant; no NPM_TOKEN exists anywhere.
+# core-ref: release tests against the latest released core.
 name: release
 
 on:
@@ -34,7 +35,8 @@ jobs:
     uses: sigrun-ai/sigrun/.github/workflows/ext-release.yml@main
     secrets: inherit
     with:
-      needs-core: false
+      needs-core: true
+      core-ref: release
       tag: ${{ inputs.tag || '' }}
       dry-run: ${{ inputs.dry-run || false }}
       dry-run-ref: ${{ inputs.ref || '' }}

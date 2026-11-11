@@ -84,14 +84,14 @@ const DEV_PIN_OVERRIDES = {
 /**
  * `@sigrun/sigrun` is the host the declared-settings contract comes from:
  * `host.settings.declare` plus the `@sigrun/sigrun/settings-schema`
- * authoring surface the test suite proves the schema against. Its dev pin is
- * the REGISTRY release (not a sibling link): this repo's CI runs without a
- * core checkout (`needs-core: false`), so the version installed here must be
- * the published one, while the peer floor stays a floor.
+ * authoring surface the test suite proves the schema against. Development
+ * links the core sibling (`file:../sigrun`, the family layout); the peer
+ * floor is the published core release this package's contract needs
+ * (settings split: the `x-sigrun-env` keyword and the display title).
  */
 const CORE_MODULE = "@sigrun/sigrun";
-const CORE_PEER = ">=0.13.0";
-const CORE_DEV = "0.16.0";
+const CORE_PEER = ">=0.15.0";
+const CORE_DEV = "file:../sigrun";
 
 const peers = manifest.peerDependencies ?? {};
 const devDeps = manifest.devDependencies ?? {};
@@ -101,7 +101,7 @@ check(
 );
 check(
 	devDeps[CORE_MODULE] === CORE_DEV,
-	`package.json: devDependencies["${CORE_MODULE}"] must be the registry release "${CORE_DEV}" (got ${JSON.stringify(devDeps[CORE_MODULE])})`,
+	`package.json: devDependencies["${CORE_MODULE}"] must link the core sibling "${CORE_DEV}" (got ${JSON.stringify(devDeps[CORE_MODULE])})`,
 );
 for (const [module, spec] of Object.entries(peers)) {
 	if (module === CORE_MODULE) continue;

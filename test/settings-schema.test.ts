@@ -8,7 +8,7 @@
  * settings file is moved to the secrets store and still reaches the client.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { assertDrawable, checkStoredSettings } from "@sigrun/sigrun/settings-schema";
+import { assertDrawable, checkStoredSettings, envOf, generateForm } from "@sigrun/sigrun/settings-schema";
 
 import sigrunBifrost, {
 	BIFROST_BASE_URL_ENV,
@@ -65,8 +65,50 @@ async function declared(
 describe("bifrost settings schema", () => {
 	it("schema is drawable", () => {
 		// No property may fall back to a JSON box: the page is a form, not an
-		// editor, and `assertDrawable` also runs the load-time keyword checks.
+		// editor, and `assertDrawable` also runs the load-time keyword checks
+		// (including `x-sigrun-env`: an uppercase name on a non-secret string).
 		assertDrawable(BIFROST_SETTINGS_SCHEMA);
+	});
+
+	it("baseUrl declares its env fallback", () => {
+		// The keyword is the form's display of the ambient fallback: it names
+		// the REAL documented variable (not a test literal), on the one
+		// non-secret string property whose value resolves through the env seam.
+		const baseUrl = BIFROST_SETTINGS_SCHEMA.properties!.baseUrl as unknown as Record<string, unknown>;
+		expect(baseUrl["x-sigrun-env"]).toBe("BIFROST_BASE_URL");
+		expect(envOf(baseUrl)).toBe(BIFROST_BASE_URL_ENV);
+		// The generator surfaces it as a form env field with a placeholder
+		// ("defaults to $BIFROST_BASE_URL"-style copy), not a JSON box.
+		const form = generateForm(BIFROST_SETTINGS_SCHEMA, { idPrefix: "provider-bifrost" });
+		expect(form.envFields).toEqual([{ name: "baseUrl", variable: "BIFROST_BASE_URL" }]);
+		// No other property declares an env fallback (the management key is a
+		// writeOnly secret, where the keyword is invalid).
+		expect(envOf(BIFROST_SETTINGS_SCHEMA.properties!.managementApiKey as unknown as Record<string, unknown>)).toBeUndefined();
+	});
+
+	it("factory declares its title", async () => {
+		const { result } = await declared();
+		expect(result.title).toBe("Bifrost");
+		// The identity is unchanged: the display title never becomes the slug.
+		expect(result.name).toBe("provider-bifrost");
+	});
+
+	it("env fallback still reaches the provider", async () => {
+		// Regression guard (green before the keyword existed): the keyword is
+		// display-only. A checked read with env set and NO stored value must
+		// leave baseUrl ABSENT — the ambient BIFROST_BASE_URL resolves through
+		// the env seam at credential resolution, never through the settings
+		// read. If the checked read materialised the env value here, a later
+		// settings save would pin it into the file and the ambient fallback
+		// would silently stop applying.
+		const checked = checkStoredSettings(BIFROST_SETTINGS_SCHEMA, {});
+		expect(checked.value.baseUrl).toBeUndefined();
+		expect(checked.repairs).toEqual([]);
+		// The full provider-level behaviour (env set, no stored value → the
+		// client uses the env URL) is pinned by `bifrost.test.ts`'s "the
+		// ambient BIFROST_BASE_URL applies when no settings URL exists".
+		const { fake } = await declared();
+		expect((await fake.read()).baseUrl).toBeUndefined();
 	});
 
 	it("the factory declares the schema and reads it once", async () => {

@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.2] - 2026-11-12
+
+### Added
+
+- The settings form shows the ambient `BIFROST_BASE_URL` fallback on the
+  gateway base URL field (`x-sigrun-env`, core 0.15.0). Display-only: the
+  value still resolves through the env seam at credential resolution and a
+  stored value still outranks it — no behaviour change.
+- The factory result declares the display title `Bifrost` (core 0.15.0's
+  `SigrunExtensionResult.title`). The slug stays `provider-bifrost`.
+
 ## [0.3.1] - 2026-11-12
 
 ### Changed
@@ -12,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Rebuilt against the sigrun 0.16.0 host types (the dev pin and
   check-manifest follow the registry release). No runtime change; the
   plugin keeps feature-detecting host surfaces with a `>=0.13.0` peer
-  floor.
+  floor at this version; 0.3.2 raises the floor to `>=0.15.0`.
 
 ## [0.3.0] - 2026-11-10
 
@@ -60,19 +71,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CI: grant actions: read to the release workflow (the release-test skip lookup). No code change.
 
 ## [0.2.2] - 2026-11-07
-
-## [Unreleased]
-
-### Changed
-
-- peer pi-durable/pi-ai/chord ~1.5.0 (requires sigrun 0.11.0).
-
-## [0.1.1] - 2026-10-27
-### Changed
-- Re-released through CI trusted publishing; this version carries SLSA
-  provenance. No functional change from 0.1.0.
-
-## [Unreleased]
 
 ## [0.2.1] - 2026-11-03
 ### Fixed

@@ -186,6 +186,11 @@ export const BIFROST_SETTINGS_SCHEMA = asJsonSchema(
 				minLength: 1,
 				pattern: "\\S",
 				format: "uri",
+				// Display-only (core 0.15.0): the settings form shows the ambient
+				// fallback. The value itself still resolves through the env seam
+				// at credential resolution — the checked read never materialises
+				// it, so nothing here changes the fallback behaviour.
+				"x-sigrun-env": BIFROST_BASE_URL_ENV,
 				"x-sigrun-apply": APPLY,
 			}),
 		),
