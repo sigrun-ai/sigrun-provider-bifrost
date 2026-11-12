@@ -449,6 +449,7 @@ export default async function sigrunBifrost(host) {
     });
     return {
         name: "provider-bifrost",
+        title: "Bifrost",
         providers: [{ provider: plugin.provider, readiness: plugin.readiness }],
         health: plugin.health,
     };
